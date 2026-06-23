@@ -1,7 +1,7 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
@@ -60,17 +60,18 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
     return _row_to_out(row)
 
 
-class _TestBedrockBody(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    bearer_token: Optional[str] = Field(None, alias="bearerToken")
-
-
 @router.post("/test-bedrock")
-async def test_bedrock(body: _TestBedrockBody = _TestBedrockBody(), db: Session = Depends(get_db)):
+async def test_bedrock(request: Request, db: Session = Depends(get_db)):
     from app.services.bedrock import detect_region_and_model
-    row = db.get(AppSettings, 1)
 
-    token = body.bearer_token or ""
+    # Read raw JSON — works regardless of camelCase/snake_case field names
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    row = db.get(AppSettings, 1)
+    token = payload.get("bearerToken") or payload.get("bearer_token") or ""
     if not token or is_sentinel(token):
         token = decrypt(row.bedrock_bearer_enc)
 
@@ -82,8 +83,7 @@ async def test_bedrock(body: _TestBedrockBody = _TestBedrockBody(), db: Session 
     except Exception as e:
         raise HTTPException(400, str(e))
 
-    # Auto-save detected region + model back to DB
-    row.bedrock_bearer_enc = encrypt(token) if token else row.bedrock_bearer_enc
+    row.bedrock_bearer_enc = encrypt(token)
     row.bedrock_region = region
     row.bedrock_model_id = model_id
     row.bedrock_enabled = True
