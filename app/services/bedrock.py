@@ -11,6 +11,15 @@ _MODELS = [
     "amazon.titan-image-generator-v2:0",
 ]
 
+_REGIONS = [
+    "us-east-1",
+    "us-west-2",
+    "eu-west-1",
+    "eu-central-1",
+    "ap-southeast-1",
+    "ap-northeast-1",
+]
+
 _IMAGE_PAYLOAD = lambda prompt, seed: {
     "taskType": "TEXT_IMAGE",
     "textToImageParams": {"text": prompt},
@@ -29,7 +38,7 @@ def _invoke(region: str, model_id: str, token: str, payload: dict) -> dict:
     os.environ["AWS_BEARER_TOKEN_BEDROCK"] = token
     client = boto3.client("bedrock-runtime", region_name=region)
     try:
-        resp = client.invoke_model(modelId=model_id, body=json.dumps(payload))
+        resp = client.invoke_model(ModelId=model_id, body=json.dumps(payload))
         return json.loads(resp["body"].read())
     except ClientError as e:
         raise ValueError(e.response["Error"]["Message"])
@@ -44,21 +53,23 @@ async def generate_image(bearer_token: str, region: str, model_id: str, prompt: 
     return f"data:image/png;base64,{b64}"
 
 
-async def detect_and_test(bearer_token: str, region: str, model_id: str | None = None) -> str:
-    """Test connection and return the working model ID.
-    If model_id is given, test only that model.
-    Otherwise try Nova Canvas then Titan until one works.
+async def detect_region_and_model(bearer_token: str, region: str | None = None) -> tuple[str, str]:
+    """Try each region (or just the given one) × each model.
+    Returns (region, model_id) of the first combination that works.
     """
-    models = [model_id] if model_id else _MODELS
-    payload = _IMAGE_PAYLOAD("a simple blue circle on white background", 42)
-    last_err: Exception = ValueError("No Bedrock image model accessible.")
+    test_payload = _IMAGE_PAYLOAD("a simple blue circle on white background", 42)
+    regions = [region] if region else _REGIONS
 
-    for m in models:
-        try:
-            result = await asyncio.to_thread(_invoke, region, m, bearer_token, payload)
-            if result.get("images"):
-                return m
-        except ValueError as e:
-            last_err = e
+    for r in regions:
+        for m in _MODELS:
+            try:
+                result = await asyncio.to_thread(_invoke, r, m, bearer_token, test_payload)
+                if result.get("images"):
+                    return r, m
+            except ValueError:
+                continue
 
-    raise last_err
+    raise ValueError(
+        "No accessible Bedrock image model found. "
+        "Ensure Nova Canvas or Titan Image Generator is enabled in your AWS account."
+    )

@@ -62,33 +62,30 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
 
 class _TestBedrockBody(BaseModel):
     bearer_token: Optional[str] = None
-    region: Optional[str] = None
-    model_id: Optional[str] = None
 
 
 @router.post("/test-bedrock")
 async def test_bedrock(body: _TestBedrockBody = _TestBedrockBody(), db: Session = Depends(get_db)):
-    from app.services.bedrock import detect_and_test
+    from app.services.bedrock import detect_region_and_model
     row = db.get(AppSettings, 1)
 
     token = body.bearer_token or ""
     if not token or is_sentinel(token):
         token = decrypt(row.bedrock_bearer_enc)
 
-    region = body.region or row.bedrock_region or "us-east-1"
-    model_id = body.model_id or None  # None → auto-detect
-
     if not token:
         raise HTTPException(400, "AWS Bedrock bearer token not configured.")
 
     try:
-        detected = await detect_and_test(token, region, model_id or None)
+        region, model_id = await detect_region_and_model(token)
     except Exception as e:
         raise HTTPException(400, str(e))
 
-    # Auto-save detected model back to DB
-    row.bedrock_model_id = detected
+    # Auto-save detected region + model back to DB
+    row.bedrock_bearer_enc = encrypt(token) if token else row.bedrock_bearer_enc
+    row.bedrock_region = region
+    row.bedrock_model_id = model_id
     row.bedrock_enabled = True
     db.commit()
 
-    return {"ok": True, "modelId": detected}
+    return {"ok": True, "region": region, "modelId": model_id}

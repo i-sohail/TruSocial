@@ -671,7 +671,7 @@ function GenerateView({data,onSave,onToast}){
             {format==="photo"&&<Select label="Image Style" value={imageStyle} onChange={setImageStyle} options={IMG_STYLES}/>}
             {format==="photo"&&!data.bedrock?.enabled&&<div style={{padding:10,background:`${S.amber}12`,border:`1px solid ${S.amber}35`,borderRadius:8,marginBottom:14,fontSize:11,color:S.amber}}>⚠ Enable AWS Bedrock image generation in Setup → API Keys</div>}
             {format==="photo"&&data.bedrock?.enabled&&<div style={{padding:10,background:`${S.teal}10`,border:`1px solid ${S.teal}30`,borderRadius:8,marginBottom:14}}>
-              <p style={{fontSize:11,color:S.teal,margin:0,fontWeight:600}}>🎨 AWS Bedrock Image ({data.bedrock?.modelId?.includes("nova")?"Nova Canvas":"Titan"})</p>
+              <p style={{fontSize:11,color:S.teal,margin:0,fontWeight:600}}>🎨 {data.bedrock?.modelId?.includes("nova")?"Nova Canvas":"Titan Image Generator"}</p>
               <p style={{fontSize:10,color:S.textMuted,margin:"2px 0 0"}}>1024×1024 PNG · {data.bedrock?.region||"us-east-1"}</p>
             </div>}
             <div style={{padding:"12px 14px",background:S.surface2,borderRadius:10,border:`1px solid ${S.border}`,marginBottom:14}}>
@@ -755,14 +755,12 @@ function GenerateView({data,onSave,onToast}){
 function SetupView({data,onSave,onToast}){
   const [form,setForm]=useState({...DEF_COMPANY,...data.company});
   const [apiKey,setApiKey]=useState(data.apiKey||"");
-  const [bedrockForm,setBedrockForm]=useState({
-    bearerToken: data.bedrock?.bearerToken||"",
-    region: data.bedrock?.region||"us-east-1",
-    modelId: data.bedrock?.modelId||"amazon.nova-canvas-v1:0",
-    enabled: data.bedrock?.enabled||false,
-  });
-  const [testingBedrock,setTestingBedrock]=useState(false);
-  const [bedrockTestResult,setBedrockTestResult]=useState(null);
+  const [bedrockToken,setBedrockToken]=useState(data.bedrock?.bearerToken||"");
+  const [bedrockDetected,setBedrockDetected]=useState(
+    data.bedrock?.enabled ? {region:data.bedrock.region, modelId:data.bedrock.modelId} : null
+  );
+  const [bedrockDetecting,setBedrockDetecting]=useState(false);
+  const [bedrockError,setBedrockError]=useState("");
   const [saving,setSaving]=useState(false);
   const [tab,setTab]=useState("company");
   const tabs=[{id:"company",label:"Company"},{id:"brand",label:"Brand"},{id:"platforms",label:"Platforms"},{id:"api",label:"API Keys"}];
@@ -771,15 +769,26 @@ function SetupView({data,onSave,onToast}){
   const VOICES=["professional","conversational","authoritative","friendly","inspirational","bold"];
   const TONES=["authoritative","empathetic","witty","data-driven","storytelling","direct"];
 
-  const testBedrock = async () => {
-    setTestingBedrock(true); setBedrockTestResult(null);
-    const rawToken = bedrockForm.bearerToken&&!bedrockForm.bearerToken.includes("•")?bedrockForm.bearerToken:null;
+  const runBedrockDetect = async (token) => {
+    if (!token || token.includes("•")) return;
+    setBedrockDetecting(true); setBedrockError(""); setBedrockDetected(null);
     try {
-      const r = await api.testBedrock(rawToken, bedrockForm.region);
-      setBedrockTestResult({ok:true, modelId:r.modelId});
-      setBedrockForm(f=>({...f, modelId:r.modelId, enabled:true}));
-    } catch(e){ setBedrockTestResult({ok:false,error:e.message}); }
-    setTestingBedrock(false);
+      const r = await api.testBedrock(token);
+      setBedrockDetected({region: r.region, modelId: r.modelId});
+    } catch(e){ setBedrockError(e.message); }
+    setBedrockDetecting(false);
+  };
+
+  const onBedrockTokenChange = (v) => {
+    setBedrockToken(v);
+    setBedrockDetected(null);
+    setBedrockError("");
+  };
+
+  const onBedrockTokenBlur = () => {
+    if (bedrockToken && !bedrockToken.includes("•") && !bedrockDetected) {
+      runBedrockDetect(bedrockToken);
+    }
   };
 
   const save = async () => {
@@ -788,12 +797,17 @@ function SetupView({data,onSave,onToast}){
       await Promise.all([
         api.updateSettings({
           apiKey,
-          bedrock:{bearerToken:bedrockForm.bearerToken,region:bedrockForm.region,modelId:bedrockForm.modelId,enabled:bedrockForm.enabled},
+          bedrock:{
+            bearerToken: bedrockToken,
+            region: bedrockDetected?.region || data.bedrock?.region || "us-east-1",
+            modelId: bedrockDetected?.modelId || data.bedrock?.modelId || "amazon.nova-canvas-v1:0",
+            enabled: !!bedrockDetected || !!data.bedrock?.enabled,
+          },
           setupComplete:!!(form.name&&form.industry),
         }),
         api.updateCompany(form)
       ]);
-      onSave({apiKey,bedrock:bedrockForm,company:form,setupComplete:!!(form.name&&form.industry)});
+      onSave({apiKey, bedrock:{bearerToken:bedrockToken,...(bedrockDetected||{}),enabled:!!bedrockDetected||!!data.bedrock?.enabled}, company:form, setupComplete:!!(form.name&&form.industry)});
       onToast("Settings saved","success");
     } catch(e){ onToast("Save failed: "+e.message,"error"); }
     setSaving(false);
@@ -825,38 +839,78 @@ function SetupView({data,onSave,onToast}){
             <div style={{width:32,height:32,borderRadius:8,background:`${S.teal}20`,border:`1px solid ${S.teal}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🎨</div>
             <div>
               <p style={{fontSize:13,fontWeight:700,color:S.textPrimary,margin:0}}>AWS Bedrock — Image Generation</p>
-              <p style={{fontSize:11,color:S.textSecondary,margin:"2px 0 0"}}>Generates images for Photo posts via AWS Bedrock (Nova Canvas or Titan — auto-detected)</p>
+              <p style={{fontSize:11,color:S.textSecondary,margin:"2px 0 0"}}>Paste your token — region and model are detected automatically</p>
             </div>
           </div>
-          <Input label="AWS Bearer Token" value={bedrockForm.bearerToken} onChange={v=>setBedrockForm(f=>({...f,bearerToken:v}))} type="password"
-            placeholder="Paste your AWS_BEARER_TOKEN_BEDROCK value..."
-            hint="IAM bearer token with AmazonBedrockFullAccess or bedrock:InvokeModel permission"/>
-          <Select label="AWS Region" value={bedrockForm.region} onChange={v=>setBedrockForm(f=>({...f,region:v}))}
-            options={["us-east-1","us-west-2","eu-west-1","eu-central-1","ap-southeast-1","ap-northeast-1"].map(r=>({value:r,label:r}))}
-            hint="Region where your Bedrock models are enabled"/>
-          {bedrockForm.modelId&&<div style={{padding:"8px 12px",background:`${S.primary}10`,border:`1px solid ${S.primary}30`,borderRadius:8,marginBottom:14,fontSize:12,color:S.primary}}>
-            Detected model: <strong>{bedrockForm.modelId}</strong>
-          </div>}
-          <div onClick={()=>setBedrockForm(f=>({...f,enabled:!f.enabled}))} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:bedrockForm.enabled?`${S.teal}12`:S.surface2,borderRadius:10,border:`1.5px solid ${bedrockForm.enabled?S.teal+"50":S.border}`,cursor:"pointer",userSelect:"none",marginBottom:14}}>
-            <div style={{width:42,height:24,borderRadius:12,background:bedrockForm.enabled?S.teal:S.border,position:"relative",flexShrink:0,transition:"background 0.2s"}}>
-              <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:bedrockForm.enabled?21:3,transition:"left 0.2s"}}/>
+
+          {/* Single token field — triggers auto-detection on blur */}
+          <div style={{position:"relative",marginBottom:8}}>
+            <label style={{display:"block",color:S.textSecondary,fontSize:11,fontWeight:700,marginBottom:6,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+              AWS Bearer Token
+            </label>
+            <div style={{position:"relative"}}>
+              <input
+                type="password"
+                value={bedrockToken}
+                onChange={e=>onBedrockTokenChange(e.target.value)}
+                onBlur={onBedrockTokenBlur}
+                placeholder="Paste AWS_BEARER_TOKEN_BEDROCK value here…"
+                style={{width:"100%",background:S.surface,border:`1px solid ${bedrockDetected?S.teal+"80":bedrockError?S.coral+"80":S.border}`,borderRadius:8,padding:"10px 44px 10px 14px",color:S.textPrimary,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}
+              />
+              <div style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)"}}>
+                {bedrockDetecting && <div style={{width:14,height:14,border:`2px solid ${S.primary}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.6s linear infinite"}}/>}
+                {!bedrockDetecting && bedrockDetected && <span style={{color:S.teal,fontSize:16}}>✓</span>}
+                {!bedrockDetecting && bedrockError && <span style={{color:S.coral,fontSize:16}}>✕</span>}
+              </div>
             </div>
-            <div>
-              <p style={{color:bedrockForm.enabled?S.teal:S.textSecondary,fontWeight:700,fontSize:13,margin:0}}>{bedrockForm.enabled?"✅ AWS Bedrock image generation ENABLED":"AWS Bedrock image generation disabled"}</p>
-              <p style={{color:S.textMuted,fontSize:11,margin:"2px 0 0"}}>{bedrockForm.enabled?"Photo posts will generate images via AWS Bedrock":"Test the connection to enable image generation"}</p>
-            </div>
+            <p style={{margin:"5px 0 0",fontSize:11,color:S.textMuted}}>
+              From your terminal: <code style={{background:S.surface3,padding:"1px 6px",borderRadius:4,color:S.textSecondary}}>echo $AWS_BEARER_TOKEN_BEDROCK</code>
+            </p>
           </div>
-          {bedrockForm.bearerToken && (
-            <Btn variant="secondary" size="sm" onClick={testBedrock} loading={testingBedrock} icon={<Icon path={IC.refresh} size={12}/>}>
-              Test & Auto-detect Model
-            </Btn>
+
+          {/* Status area */}
+          {bedrockDetecting && (
+            <div style={{padding:"12px 16px",background:`${S.primary}10`,border:`1px solid ${S.primary}30`,borderRadius:10,marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:14,height:14,border:`2px solid ${S.primary}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.6s linear infinite",flexShrink:0}}/>
+              <div>
+                <p style={{color:S.primary,fontWeight:700,fontSize:13,margin:"0 0 2px"}}>Scanning AWS regions…</p>
+                <p style={{color:S.textMuted,fontSize:11,margin:0}}>Trying us-east-1, us-west-2, eu-west-1 and more — this takes ~10 seconds</p>
+              </div>
+            </div>
           )}
-          {bedrockTestResult && (
-            <div style={{marginTop:10,padding:"10px 14px",borderRadius:8,background:bedrockTestResult.ok?`${S.teal}12`:`${S.coral}12`,border:`1px solid ${bedrockTestResult.ok?S.teal+"40":S.coral+"40"}`}}>
-              <p style={{fontSize:12,color:bedrockTestResult.ok?S.teal:S.coral,margin:0,fontWeight:600}}>
-                {bedrockTestResult.ok?`✓ AWS Bedrock connected — using ${bedrockTestResult.modelId}`:"✕ "+bedrockTestResult.error}
-              </p>
+
+          {bedrockDetected && !bedrockDetecting && (
+            <div style={{padding:"14px 16px",background:`${S.teal}10`,border:`1px solid ${S.teal}35`,borderRadius:10,marginBottom:10}}>
+              <p style={{color:S.teal,fontWeight:800,fontSize:13,margin:"0 0 8px"}}>✓ Connected — ready to generate images</p>
+              <div style={{display:"flex",gap:20}}>
+                <div>
+                  <p style={{color:S.textMuted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",margin:"0 0 2px"}}>Region</p>
+                  <p style={{color:S.textPrimary,fontSize:13,fontWeight:700,margin:0}}>{bedrockDetected.region}</p>
+                </div>
+                <div>
+                  <p style={{color:S.textMuted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",margin:"0 0 2px"}}>Model</p>
+                  <p style={{color:S.textPrimary,fontSize:13,fontWeight:700,margin:0}}>
+                    {bedrockDetected.modelId?.includes("nova") ? "Nova Canvas" : "Titan Image Generator"}
+                  </p>
+                </div>
+              </div>
             </div>
+          )}
+
+          {bedrockError && !bedrockDetecting && (
+            <div style={{padding:"12px 16px",background:`${S.coral}10`,border:`1px solid ${S.coral}35`,borderRadius:10,marginBottom:10}}>
+              <p style={{color:S.coral,fontWeight:700,fontSize:13,margin:"0 0 4px"}}>✕ Could not connect</p>
+              <p style={{color:S.textSecondary,fontSize:12,margin:0}}>{bedrockError}</p>
+              <Btn size="sm" variant="secondary" onClick={()=>runBedrockDetect(bedrockToken)} style={{marginTop:10}} icon={<Icon path={IC.refresh} size={11}/>}>
+                Retry
+              </Btn>
+            </div>
+          )}
+
+          {!bedrockDetected && !bedrockDetecting && !bedrockError && (
+            <p style={{fontSize:11,color:S.textMuted,marginTop:4}}>
+              Paste your token above — detection runs automatically when you leave the field
+            </p>
           )}
         </div>
         <div style={{padding:"12px 14px",background:`${S.amber}10`,border:`1px solid ${S.amber}30`,borderRadius:10}}>
