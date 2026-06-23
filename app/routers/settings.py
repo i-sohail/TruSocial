@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
@@ -61,7 +61,8 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
 
 
 class _TestBedrockBody(BaseModel):
-    bearer_token: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+    bearer_token: Optional[str] = Field(None, alias="bearerToken")
 
 
 @router.post("/test-bedrock")

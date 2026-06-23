@@ -38,7 +38,7 @@ def _invoke(region: str, model_id: str, token: str, payload: dict) -> dict:
     os.environ["AWS_BEARER_TOKEN_BEDROCK"] = token
     client = boto3.client("bedrock-runtime", region_name=region)
     try:
-        resp = client.invoke_model(ModelId=model_id, body=json.dumps(payload))
+        resp = client.invoke_model(modelId=model_id, body=json.dumps(payload))
         return json.loads(resp["body"].read())
     except ClientError as e:
         raise ValueError(e.response["Error"]["Message"])
