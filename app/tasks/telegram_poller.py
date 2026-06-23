@@ -27,7 +27,8 @@ def _get_config():
         return (
             decrypt(settings.api_key_enc),
             {
-                "bearer": decrypt(settings.bedrock_bearer_enc),
+                "access_key": decrypt(settings.bedrock_access_key_enc),
+                "secret_key": decrypt(settings.bedrock_secret_key_enc),
                 "region": settings.bedrock_region or "us-east-1",
                 "model_id": settings.bedrock_model_id or "amazon.nova-canvas-v1:0",
                 "enabled": settings.bedrock_enabled,
@@ -224,7 +225,7 @@ async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: s
         )
 
         new_image_url = None
-        if old_format == "photo" and bedrock["enabled"] and bedrock["bearer"]:
+        if old_format == "photo" and bedrock["enabled"] and bedrock["access_key"]:
             try:
                 img_prompt = await call_claude(
                     api_key, sys_prompt,
@@ -233,7 +234,7 @@ async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: s
                 )
                 from app.services.bedrock import generate_image
                 new_image_url = await generate_image(
-                    bedrock["bearer"], bedrock["region"], bedrock["model_id"], img_prompt,
+                    bedrock["access_key"], bedrock["secret_key"], bedrock["region"], bedrock["model_id"], img_prompt,
                 )
             except Exception as e:
                 print(f"[TG poller] image regen failed: {e}")

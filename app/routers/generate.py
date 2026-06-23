@@ -65,10 +65,11 @@ async def generate_full(body: GenerateRequest, db: Session = Depends(get_db)):
     image_error = None
 
     if body.format == "photo":
-        if not settings.bedrock_enabled or not settings.bedrock_bearer_enc:
+        if not settings.bedrock_enabled or not settings.bedrock_access_key_enc:
             image_error = "AWS Bedrock image generation not configured."
         else:
-            bearer = decrypt(settings.bedrock_bearer_enc)
+            access_key = decrypt(settings.bedrock_access_key_enc)
+            secret_key = decrypt(settings.bedrock_secret_key_enc)
             try:
                 image_prompt = await call_claude(
                     api_key, sys_prompt,
@@ -79,7 +80,8 @@ async def generate_full(body: GenerateRequest, db: Session = Depends(get_db)):
                 )
                 from app.services.bedrock import generate_image
                 image_url = await generate_image(
-                    bearer,
+                    access_key,
+                    secret_key,
                     settings.bedrock_region or "us-east-1",
                     settings.bedrock_model_id or "amazon.nova-canvas-v1:0",
                     image_prompt,

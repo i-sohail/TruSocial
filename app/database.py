@@ -20,10 +20,11 @@ def init_db() -> None:
 def _migrate_db() -> None:
     """Add any new columns that don't exist yet (SQLite doesn't support IF NOT EXISTS on ALTER TABLE)."""
     new_cols = [
-        ("bedrock_bearer_enc",  "TEXT DEFAULT ''"),
-        ("bedrock_region",      "TEXT DEFAULT 'us-east-1'"),
-        ("bedrock_model_id",    "TEXT DEFAULT 'amazon.nova-canvas-v1:0'"),
-        ("bedrock_enabled",     "INTEGER DEFAULT 0"),
+        ("bedrock_access_key_enc", "TEXT DEFAULT ''"),
+        ("bedrock_secret_key_enc", "TEXT DEFAULT ''"),
+        ("bedrock_region",         "TEXT DEFAULT 'us-east-1'"),
+        ("bedrock_model_id",       "TEXT DEFAULT 'amazon.nova-canvas-v1:0'"),
+        ("bedrock_enabled",        "INTEGER DEFAULT 0"),
     ]
     with engine.connect() as conn:
         for col, defn in new_cols:
@@ -50,15 +51,17 @@ def _seed_defaults() -> None:
 
 
 def _apply_env_credentials() -> None:
-    """If AWS_BEARER_TOKEN_BEDROCK env var is set, write it into the DB on first run."""
+    """If AWS env vars are set, write them into the DB on first run."""
     from app.encryption import encrypt
-    bedrock_token = os.getenv("AWS_BEARER_TOKEN_BEDROCK", "")
-    if not bedrock_token:
+    access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    if not access_key or not secret_key:
         return
     with SessionLocal() as db:
         row = db.get(AppSettings, 1)
-        if not row.bedrock_bearer_enc:
-            row.bedrock_bearer_enc = encrypt(bedrock_token)
+        if not row.bedrock_access_key_enc:
+            row.bedrock_access_key_enc = encrypt(access_key)
+            row.bedrock_secret_key_enc = encrypt(secret_key)
             row.bedrock_enabled = True
             db.commit()
-            print("[startup] AWS_BEARER_TOKEN_BEDROCK loaded from environment.")
+            print("[startup] AWS credentials loaded from environment.")

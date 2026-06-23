@@ -14,7 +14,7 @@ export const api = {
   // Settings
   getSettings:    ()           => request("GET",  "/settings"),
   updateSettings: (d)          => request("PUT",  "/settings", d),
-  testBedrock:    (bearerToken) => request("POST", "/settings/test-bedrock", {bearerToken: bearerToken||undefined}),
+  testBedrock:    (accessKey, secretKey) => request("POST", "/settings/test-bedrock", {accessKey, secretKey}),
 
   // Company
   getCompany:    ()  => request("GET", "/company"),

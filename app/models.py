@@ -12,7 +12,8 @@ class AppSettings(Base):
 
     id = Column(Integer, primary_key=True, default=1)
     api_key_enc = Column(Text, default="")
-    bedrock_bearer_enc = Column(Text, default="")
+    bedrock_access_key_enc = Column(Text, default="")
+    bedrock_secret_key_enc = Column(Text, default="")
     bedrock_region = Column(String(50), default="us-east-1")
     bedrock_model_id = Column(String(120), default="amazon.nova-canvas-v1:0")
     bedrock_enabled = Column(Boolean, default=False)

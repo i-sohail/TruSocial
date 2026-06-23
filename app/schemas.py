@@ -16,7 +16,8 @@ class _Base(BaseModel):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 class BedrockOut(_Base):
-    bearer_token: str = ""
+    access_key: str = ""
+    secret_key: str = ""
     region: str = "us-east-1"
     model_id: str = "amazon.nova-canvas-v1:0"
     enabled: bool = False
@@ -30,7 +31,8 @@ class SettingsOut(_Base):
 
 
 class BedrockIn(_Base):
-    bearer_token: Optional[str] = None
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
     region: Optional[str] = None
     model_id: Optional[str] = None
     enabled: Optional[bool] = None

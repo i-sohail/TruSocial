@@ -1,7 +1,4 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
@@ -16,7 +13,8 @@ def _row_to_out(row: AppSettings) -> SettingsOut:
     return SettingsOut(
         api_key=mask(row.api_key_enc),
         bedrock=BedrockOut(
-            bearer_token=mask(row.bedrock_bearer_enc),
+            access_key=mask(row.bedrock_access_key_enc),
+            secret_key=mask(row.bedrock_secret_key_enc),
             region=row.bedrock_region or "us-east-1",
             model_id=row.bedrock_model_id or "amazon.nova-canvas-v1:0",
             enabled=row.bedrock_enabled,
@@ -41,8 +39,10 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
 
     if body.bedrock is not None:
         b = body.bedrock
-        if b.bearer_token is not None and not is_sentinel(b.bearer_token):
-            row.bedrock_bearer_enc = encrypt(b.bearer_token) if b.bearer_token else ""
+        if b.access_key is not None and not is_sentinel(b.access_key):
+            row.bedrock_access_key_enc = encrypt(b.access_key) if b.access_key else ""
+        if b.secret_key is not None and not is_sentinel(b.secret_key):
+            row.bedrock_secret_key_enc = encrypt(b.secret_key) if b.secret_key else ""
         if b.region is not None:
             row.bedrock_region = b.region
         if b.model_id is not None:
@@ -64,26 +64,33 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
 async def test_bedrock(request: Request, db: Session = Depends(get_db)):
     from app.services.bedrock import detect_region_and_model
 
-    # Read raw JSON — works regardless of camelCase/snake_case field names
     try:
         payload = await request.json()
     except Exception:
         payload = {}
 
     row = db.get(AppSettings, 1)
-    token = payload.get("bearerToken") or payload.get("bearer_token") or ""
-    if not token or is_sentinel(token):
-        token = decrypt(row.bedrock_bearer_enc)
 
-    if not token:
-        raise HTTPException(400, "AWS Bedrock bearer token not configured.")
+    access_key = payload.get("accessKey") or payload.get("access_key") or ""
+    secret_key = payload.get("secretKey") or payload.get("secret_key") or ""
+
+    if not access_key or is_sentinel(access_key):
+        access_key = decrypt(row.bedrock_access_key_enc)
+    if not secret_key or is_sentinel(secret_key):
+        secret_key = decrypt(row.bedrock_secret_key_enc)
+
+    if not access_key:
+        raise HTTPException(400, "AWS Access Key ID not configured.")
+    if not secret_key:
+        raise HTTPException(400, "AWS Secret Access Key not configured.")
 
     try:
-        region, model_id = await detect_region_and_model(token)
+        region, model_id = await detect_region_and_model(access_key, secret_key)
     except Exception as e:
         raise HTTPException(400, str(e))
 
-    row.bedrock_bearer_enc = encrypt(token)
+    row.bedrock_access_key_enc = encrypt(access_key)
+    row.bedrock_secret_key_enc = encrypt(secret_key)
     row.bedrock_region = region
     row.bedrock_model_id = model_id
     row.bedrock_enabled = True
