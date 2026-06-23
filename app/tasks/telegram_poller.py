@@ -19,7 +19,7 @@ from app.services import telegram_svc
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _get_config():
-    """Return (api_key, openai_settings, telegram_settings, company) dicts."""
+    """Return (api_key, bedrock_settings, telegram_settings, company) dicts."""
     with SessionLocal() as db:
         settings = db.get(AppSettings, 1)
         tg = db.get(TelegramSettings, 1)
@@ -27,11 +27,10 @@ def _get_config():
         return (
             decrypt(settings.api_key_enc),
             {
-                "key": decrypt(settings.openai_key_enc),
-                "endpoint": settings.openai_endpoint or "",
-                "deployment": settings.openai_deployment or "gpt-4o",
-                "api_version": settings.openai_api_version or "2024-12-01-preview",
-                "enabled": settings.openai_image_enabled,
+                "bearer": decrypt(settings.bedrock_bearer_enc),
+                "region": settings.bedrock_region or "us-east-1",
+                "model_id": settings.bedrock_model_id or "amazon.nova-canvas-v1:0",
+                "enabled": settings.bedrock_enabled,
             },
             {
                 "token": decrypt(tg.bot_token_enc),
@@ -195,7 +194,7 @@ async def _handle_reject(post_id: str, cb_id: str, msg_id: Optional[int], tg_cfg
 
 # ── feedback handler ──────────────────────────────────────────────────────────
 
-async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: str, openai: dict, co: dict) -> None:
+async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: str, bedrock: dict, co: dict) -> None:
     token, chat_id = tg_cfg["token"], tg_cfg["chat_id"]
 
     regen_msg = await telegram_svc.send(
@@ -225,17 +224,16 @@ async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: s
         )
 
         new_image_url = None
-        if old_format == "photo" and openai["enabled"] and openai["key"]:
+        if old_format == "photo" and bedrock["enabled"] and bedrock["bearer"]:
             try:
                 img_prompt = await call_claude(
                     api_key, sys_prompt,
-                    f"GPT-4o image prompt. Topic: {old_topic}. Style: {old_style}. "
+                    f"Vivid image prompt for social media poster. Topic: {old_topic}. Style: {old_style}. "
                     f"Incorporate feedback: {feedback}. Write ONLY the image prompt (2 sentences).", 200,
                 )
-                from app.services.openai_image import generate_image
+                from app.services.bedrock import generate_image
                 new_image_url = await generate_image(
-                    openai["key"], openai["endpoint"],
-                    openai["deployment"], openai["api_version"], img_prompt,
+                    bedrock["bearer"], bedrock["region"], bedrock["model_id"], img_prompt,
                 )
             except Exception as e:
                 print(f"[TG poller] image regen failed: {e}")
@@ -251,7 +249,7 @@ async def _handle_feedback(post_id: str, feedback: str, tg_cfg: dict, api_key: s
                 id=new_id, body=new_body,
                 format=old_format, content_type=old_post.content_type if old_post else "",
                 topic=old_topic, image_url=new_image_url or "",
-                image_style=old_style, image_provider="openai-gpt4o" if new_image_url else "",
+                image_style=old_style, image_provider="aws-bedrock" if new_image_url else "",
                 status="scheduled", platforms=old_platforms,
                 scheduled_for=old_post.scheduled_for if old_post else None,
                 created_at=datetime.now(timezone.utc),
@@ -296,7 +294,7 @@ _offset = 0
 _handled: set = set()
 
 
-async def _poll(tg_cfg: dict, api_key: str, openai: dict, co: dict) -> None:
+async def _poll(tg_cfg: dict, api_key: str, bedrock: dict, co: dict) -> None:
     global _offset
     token, chat_id = tg_cfg["token"], tg_cfg["chat_id"]
     try:
@@ -334,7 +332,7 @@ async def _poll(tg_cfg: dict, api_key: str, openai: dict, co: dict) -> None:
                 waiting = db.query(Post).filter(Post.status == "awaiting_feedback").first()
                 waiting_id = waiting.id if waiting else None
             if waiting_id:
-                await _handle_feedback(waiting_id, text, tg_cfg, api_key, openai, co)
+                await _handle_feedback(waiting_id, text, tg_cfg, api_key, bedrock, co)
 
     # Update last_polled timestamp
     if updates:
@@ -349,10 +347,10 @@ async def run_telegram_poller() -> None:
     print("[TG poller] started")
     while True:
         try:
-            api_key, openai, tg_cfg, co = _get_config()
+            api_key, bedrock, tg_cfg, co = _get_config()
             if tg_cfg["enabled"] and tg_cfg["token"] and tg_cfg["chat_id"]:
                 await _send_notifications(tg_cfg, co)
-                await _poll(tg_cfg, api_key, openai, co)
+                await _poll(tg_cfg, api_key, bedrock, co)
         except Exception as e:
             print(f"[TG poller] error: {e}")
         await asyncio.sleep(3)

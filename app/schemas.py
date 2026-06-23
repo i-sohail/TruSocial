@@ -15,32 +15,30 @@ class _Base(BaseModel):
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
-class OpenAIImageOut(_Base):
-    api_key: str = ""
-    endpoint: str = ""
-    deployment: str = "gpt-4o"
-    api_version: str = "2024-12-01-preview"
+class BedrockOut(_Base):
+    bearer_token: str = ""
+    region: str = "us-east-1"
+    model_id: str = "amazon.nova-canvas-v1:0"
     enabled: bool = False
 
 
 class SettingsOut(_Base):
     api_key: str = ""
-    openai: OpenAIImageOut = OpenAIImageOut()
+    bedrock: BedrockOut = BedrockOut()
     setup_complete: bool = False
     current_view: str = "dashboard"
 
 
-class OpenAIImageIn(_Base):
-    api_key: Optional[str] = None
-    endpoint: Optional[str] = None
-    deployment: Optional[str] = None
-    api_version: Optional[str] = None
+class BedrockIn(_Base):
+    bearer_token: Optional[str] = None
+    region: Optional[str] = None
+    model_id: Optional[str] = None
     enabled: Optional[bool] = None
 
 
 class SettingsIn(_Base):
     api_key: Optional[str] = None
-    openai: Optional[OpenAIImageIn] = None
+    bedrock: Optional[BedrockIn] = None
     setup_complete: Optional[bool] = None
     current_view: Optional[str] = None
 

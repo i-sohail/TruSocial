@@ -14,7 +14,7 @@ export const api = {
   // Settings
   getSettings:    ()           => request("GET",  "/settings"),
   updateSettings: (d)          => request("PUT",  "/settings", d),
-  testOpenAI:     (key,endpoint,deployment,apiVersion) => request("POST", "/settings/test-openai", {apiKey:key||undefined,endpoint,deployment,apiVersion}),
+  testBedrock:    (bearerToken, region) => request("POST", "/settings/test-bedrock", {bearerToken: bearerToken||undefined, region}),
 
   // Company
   getCompany:    ()  => request("GET", "/company"),

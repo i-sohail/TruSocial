@@ -9,7 +9,7 @@ const S = {
   textPrimary:"#EEF2FF", textSecondary:"#8892B0", textMuted:"#3A4A63",
 };
 
-const DEF_OPENAI = { apiKey:"", enabled:false };
+const DEF_BEDROCK = { bearerToken:"", region:"us-east-1", modelId:"amazon.nova-canvas-v1:0", enabled:false };
 const DEF_COMPANY = {
   name:"",industry:"",description:"",website:"",products:"",services:"",
   targetAudience:"",brandVoice:"professional",brandColors:["#6C63FF","#00D1B2"],
@@ -595,11 +595,11 @@ function GenerateView({data,onSave,onToast}){
   const [error,setError]=useState("");
 
   const enabled = Object.entries(data.company?.platforms||{}).filter(([,v])=>v).map(([k])=>k);
-  const agentNames = ["Brand Knowledge","Industry Research","Content Strategy","Universal Copy Agent",...(format==="photo"?["Image Prompt Agent","GPT-4o Image (OpenAI)"]:[]),"Quality Assurance","Brand Compliance"];
+  const agentNames = ["Brand Knowledge","Industry Research","Content Strategy","Universal Copy Agent",...(format==="photo"?["Image Prompt Agent","Bedrock Image (AWS)"]:[]),"Quality Assurance","Brand Compliance"];
 
   const run = async () => {
     if (!enabled.length){onToast("Enable platforms in Setup → Platforms","error");return;}
-    if (format==="photo"&&!data.openai?.enabled){onToast("Enable OpenAI image generation in Setup → API Keys","error");return;}
+    if (format==="photo"&&!data.bedrock?.enabled){onToast("Enable AWS Bedrock image generation in Setup → API Keys","error");return;}
 
     setGenerating(true);setError("");setResult(null);
     setAgents(agentNames.map((n,i)=>({name:n,status:i===0?"running":"idle"})));
@@ -619,8 +619,8 @@ function GenerateView({data,onSave,onToast}){
       setResult(newPost);
       onSave({posts:[...(data.posts||[]),newPost]});
       onToast(
-        format==="photo"&&newPost.imageUrl?"Post + GPT-4o image generated ✓":
-        format==="photo"&&newPost.imageError?"Post generated (image failed — check OpenAI config)":
+        format==="photo"&&newPost.imageUrl?"Post + Bedrock image generated ✓":
+        format==="photo"&&newPost.imageError?"Post generated (image failed — check Bedrock config)":
         "Post generated ✓","success"
       );
     } catch(e){
@@ -669,10 +669,10 @@ function GenerateView({data,onSave,onToast}){
               );})}
             </div>
             {format==="photo"&&<Select label="Image Style" value={imageStyle} onChange={setImageStyle} options={IMG_STYLES}/>}
-            {format==="photo"&&!data.openai?.enabled&&<div style={{padding:10,background:`${S.amber}12`,border:`1px solid ${S.amber}35`,borderRadius:8,marginBottom:14,fontSize:11,color:S.amber}}>⚠ Enable OpenAI image generation in Setup → API Keys</div>}
-            {format==="photo"&&data.openai?.enabled&&<div style={{padding:10,background:`${S.teal}10`,border:`1px solid ${S.teal}30`,borderRadius:8,marginBottom:14}}>
-              <p style={{fontSize:11,color:S.teal,margin:0,fontWeight:600}}>🎨 OpenAI GPT-4o Image</p>
-              <p style={{fontSize:10,color:S.textMuted,margin:"2px 0 0"}}>1024×1024 PNG · GPT-4o quality</p>
+            {format==="photo"&&!data.bedrock?.enabled&&<div style={{padding:10,background:`${S.amber}12`,border:`1px solid ${S.amber}35`,borderRadius:8,marginBottom:14,fontSize:11,color:S.amber}}>⚠ Enable AWS Bedrock image generation in Setup → API Keys</div>}
+            {format==="photo"&&data.bedrock?.enabled&&<div style={{padding:10,background:`${S.teal}10`,border:`1px solid ${S.teal}30`,borderRadius:8,marginBottom:14}}>
+              <p style={{fontSize:11,color:S.teal,margin:0,fontWeight:600}}>🎨 AWS Bedrock Image ({data.bedrock?.modelId?.includes("nova")?"Nova Canvas":"Titan"})</p>
+              <p style={{fontSize:10,color:S.textMuted,margin:"2px 0 0"}}>1024×1024 PNG · {data.bedrock?.region||"us-east-1"}</p>
             </div>}
             <div style={{padding:"12px 14px",background:S.surface2,borderRadius:10,border:`1px solid ${S.border}`,marginBottom:14}}>
               <p style={{fontSize:11,fontWeight:700,color:S.textSecondary,textTransform:"uppercase",margin:"0 0 8px"}}>Publishing to</p>
@@ -710,7 +710,7 @@ function GenerateView({data,onSave,onToast}){
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
                     <span style={{fontWeight:800,color:S.textPrimary,fontSize:14}}>{FORMATS[result.format]?.label}</span>
                     <Badge color={statusColor(result.status)}>{result.status}</Badge>
-                    {result.imageUrl&&<Badge color={S.teal}>🎨 GPT-4o</Badge>}
+                    {result.imageUrl&&<Badge color={S.teal}>🎨 AWS Bedrock</Badge>}
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     {Object.entries(result.platforms||{}).filter(([,v])=>v).map(([p])=>{const pl=PL[p];return(<div key={p} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:10,background:`${pl.color}18`}}><Icon path={IC[pl.icon]} size={10} color={pl.color}/><span style={{fontSize:10,fontWeight:700,color:pl.color}}>{pl.label}</span></div>);})}
@@ -722,7 +722,7 @@ function GenerateView({data,onSave,onToast}){
                   {result.imageUrl
                     ?<><img src={result.imageUrl} alt="Generated" style={{width:"100%",maxHeight:360,objectFit:"contain",background:"#000",display:"block"}}/><div style={{padding:"10px 14px",background:S.surface2,display:"flex",gap:10}}><Btn size="sm" variant="ghost" onClick={()=>window.open(result.imageUrl,"_blank")} icon={<Icon path={IC.eye} size={11}/>}>View</Btn><Btn size="sm" variant="ghost" onClick={()=>window.open(result.imageUrl,"_blank")} icon={<Icon path={IC.down} size={11}/>}>Download</Btn></div></>
                     :result.imageError?<div style={{padding:16,background:`${S.coral}08`,color:S.coral,fontSize:13}}>Image error: {result.imageError}</div>
-                    :<div style={{padding:24,textAlign:"center",color:S.textMuted,fontSize:13}}>No image — enable OpenAI in Setup</div>
+                    :<div style={{padding:24,textAlign:"center",color:S.textMuted,fontSize:13}}>No image — enable AWS Bedrock in Setup</div>
                   }
                 </div>
               )}
@@ -755,15 +755,14 @@ function GenerateView({data,onSave,onToast}){
 function SetupView({data,onSave,onToast}){
   const [form,setForm]=useState({...DEF_COMPANY,...data.company});
   const [apiKey,setApiKey]=useState(data.apiKey||"");
-  const [openaiForm,setOpenaiForm]=useState({
-    apiKey: data.openai?.apiKey||"",
-    endpoint: data.openai?.endpoint||"https://trugreen-ai.openai.azure.com/",
-    deployment: data.openai?.deployment||"gpt-4o",
-    apiVersion: data.openai?.apiVersion||"2024-12-01-preview",
-    enabled: data.openai?.enabled||false,
+  const [bedrockForm,setBedrockForm]=useState({
+    bearerToken: data.bedrock?.bearerToken||"",
+    region: data.bedrock?.region||"us-east-1",
+    modelId: data.bedrock?.modelId||"amazon.nova-canvas-v1:0",
+    enabled: data.bedrock?.enabled||false,
   });
-  const [testingOpenAI,setTestingOpenAI]=useState(false);
-  const [openaiTestResult,setOpenaiTestResult]=useState(null);
+  const [testingBedrock,setTestingBedrock]=useState(false);
+  const [bedrockTestResult,setBedrockTestResult]=useState(null);
   const [saving,setSaving]=useState(false);
   const [tab,setTab]=useState("company");
   const tabs=[{id:"company",label:"Company"},{id:"brand",label:"Brand"},{id:"platforms",label:"Platforms"},{id:"api",label:"API Keys"}];
@@ -772,14 +771,15 @@ function SetupView({data,onSave,onToast}){
   const VOICES=["professional","conversational","authoritative","friendly","inspirational","bold"];
   const TONES=["authoritative","empathetic","witty","data-driven","storytelling","direct"];
 
-  const testOpenAI = async () => {
-    setTestingOpenAI(true); setOpenaiTestResult(null);
-    const rawKey = openaiForm.apiKey&&!openaiForm.apiKey.includes("•")?openaiForm.apiKey:null;
+  const testBedrock = async () => {
+    setTestingBedrock(true); setBedrockTestResult(null);
+    const rawToken = bedrockForm.bearerToken&&!bedrockForm.bearerToken.includes("•")?bedrockForm.bearerToken:null;
     try {
-      await api.testOpenAI(rawKey, openaiForm.endpoint, openaiForm.deployment, openaiForm.apiVersion);
-      setOpenaiTestResult({ok:true});
-    } catch(e){ setOpenaiTestResult({ok:false,error:e.message}); }
-    setTestingOpenAI(false);
+      const r = await api.testBedrock(rawToken, bedrockForm.region);
+      setBedrockTestResult({ok:true, modelId:r.modelId});
+      setBedrockForm(f=>({...f, modelId:r.modelId, enabled:true}));
+    } catch(e){ setBedrockTestResult({ok:false,error:e.message}); }
+    setTestingBedrock(false);
   };
 
   const save = async () => {
@@ -788,12 +788,12 @@ function SetupView({data,onSave,onToast}){
       await Promise.all([
         api.updateSettings({
           apiKey,
-          openai:{apiKey:openaiForm.apiKey,endpoint:openaiForm.endpoint,deployment:openaiForm.deployment,apiVersion:openaiForm.apiVersion,enabled:openaiForm.enabled},
+          bedrock:{bearerToken:bedrockForm.bearerToken,region:bedrockForm.region,modelId:bedrockForm.modelId,enabled:bedrockForm.enabled},
           setupComplete:!!(form.name&&form.industry),
         }),
         api.updateCompany(form)
       ]);
-      onSave({apiKey,openai:openaiForm,company:form,setupComplete:!!(form.name&&form.industry)});
+      onSave({apiKey,bedrock:bedrockForm,company:form,setupComplete:!!(form.name&&form.industry)});
       onToast("Settings saved","success");
     } catch(e){ onToast("Save failed: "+e.message,"error"); }
     setSaving(false);
@@ -824,42 +824,37 @@ function SetupView({data,onSave,onToast}){
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
             <div style={{width:32,height:32,borderRadius:8,background:`${S.teal}20`,border:`1px solid ${S.teal}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🎨</div>
             <div>
-              <p style={{fontSize:13,fontWeight:700,color:S.textPrimary,margin:0}}>Azure OpenAI — Image Generation</p>
-              <p style={{fontSize:11,color:S.textSecondary,margin:"2px 0 0"}}>Generates images for Photo posts via your team's Azure OpenAI deployment</p>
+              <p style={{fontSize:13,fontWeight:700,color:S.textPrimary,margin:0}}>AWS Bedrock — Image Generation</p>
+              <p style={{fontSize:11,color:S.textSecondary,margin:"2px 0 0"}}>Generates images for Photo posts via AWS Bedrock (Nova Canvas or Titan — auto-detected)</p>
             </div>
           </div>
-          <Input label="Azure OpenAI API Key" value={openaiForm.apiKey} onChange={v=>setOpenaiForm(f=>({...f,apiKey:v}))} type="password"
-            placeholder="Paste your Azure OpenAI key..."
-            hint="From Azure Portal → your OpenAI resource → Keys and Endpoint"/>
-          <Input label="Endpoint URL" value={openaiForm.endpoint} onChange={v=>setOpenaiForm(f=>({...f,endpoint:v}))}
-            placeholder="https://trugreen-ai.openai.azure.com/"
-            hint="From Azure Portal → your OpenAI resource → Keys and Endpoint"/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
-            <Input label="Deployment Name" value={openaiForm.deployment} onChange={v=>setOpenaiForm(f=>({...f,deployment:v}))}
-              placeholder="gpt-4o"
-              hint="The deployment name you set in Azure AI Foundry"/>
-            <Input label="API Version" value={openaiForm.apiVersion} onChange={v=>setOpenaiForm(f=>({...f,apiVersion:v}))}
-              placeholder="2024-12-01-preview"
-              hint="Azure OpenAI API version"/>
-          </div>
-          <div onClick={()=>setOpenaiForm(f=>({...f,enabled:!f.enabled}))} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:openaiForm.enabled?`${S.teal}12`:S.surface2,borderRadius:10,border:`1.5px solid ${openaiForm.enabled?S.teal+"50":S.border}`,cursor:"pointer",userSelect:"none",marginBottom:14}}>
-            <div style={{width:42,height:24,borderRadius:12,background:openaiForm.enabled?S.teal:S.border,position:"relative",flexShrink:0,transition:"background 0.2s"}}>
-              <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:openaiForm.enabled?21:3,transition:"left 0.2s"}}/>
+          <Input label="AWS Bearer Token" value={bedrockForm.bearerToken} onChange={v=>setBedrockForm(f=>({...f,bearerToken:v}))} type="password"
+            placeholder="Paste your AWS_BEARER_TOKEN_BEDROCK value..."
+            hint="IAM bearer token with AmazonBedrockFullAccess or bedrock:InvokeModel permission"/>
+          <Select label="AWS Region" value={bedrockForm.region} onChange={v=>setBedrockForm(f=>({...f,region:v}))}
+            options={["us-east-1","us-west-2","eu-west-1","eu-central-1","ap-southeast-1","ap-northeast-1"].map(r=>({value:r,label:r}))}
+            hint="Region where your Bedrock models are enabled"/>
+          {bedrockForm.modelId&&<div style={{padding:"8px 12px",background:`${S.primary}10`,border:`1px solid ${S.primary}30`,borderRadius:8,marginBottom:14,fontSize:12,color:S.primary}}>
+            Detected model: <strong>{bedrockForm.modelId}</strong>
+          </div>}
+          <div onClick={()=>setBedrockForm(f=>({...f,enabled:!f.enabled}))} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:bedrockForm.enabled?`${S.teal}12`:S.surface2,borderRadius:10,border:`1.5px solid ${bedrockForm.enabled?S.teal+"50":S.border}`,cursor:"pointer",userSelect:"none",marginBottom:14}}>
+            <div style={{width:42,height:24,borderRadius:12,background:bedrockForm.enabled?S.teal:S.border,position:"relative",flexShrink:0,transition:"background 0.2s"}}>
+              <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:bedrockForm.enabled?21:3,transition:"left 0.2s"}}/>
             </div>
             <div>
-              <p style={{color:openaiForm.enabled?S.teal:S.textSecondary,fontWeight:700,fontSize:13,margin:0}}>{openaiForm.enabled?"✅ Azure image generation ENABLED":"Azure image generation disabled"}</p>
-              <p style={{color:S.textMuted,fontSize:11,margin:"2px 0 0"}}>{openaiForm.enabled?"Photo posts will generate images via your Azure OpenAI deployment":"Toggle on to enable image generation"}</p>
+              <p style={{color:bedrockForm.enabled?S.teal:S.textSecondary,fontWeight:700,fontSize:13,margin:0}}>{bedrockForm.enabled?"✅ AWS Bedrock image generation ENABLED":"AWS Bedrock image generation disabled"}</p>
+              <p style={{color:S.textMuted,fontSize:11,margin:"2px 0 0"}}>{bedrockForm.enabled?"Photo posts will generate images via AWS Bedrock":"Test the connection to enable image generation"}</p>
             </div>
           </div>
-          {(openaiForm.apiKey||openaiForm.endpoint) && (
-            <Btn variant="secondary" size="sm" onClick={testOpenAI} loading={testingOpenAI} icon={<Icon path={IC.refresh} size={12}/>}>
-              Test Azure Connection
+          {bedrockForm.bearerToken && (
+            <Btn variant="secondary" size="sm" onClick={testBedrock} loading={testingBedrock} icon={<Icon path={IC.refresh} size={12}/>}>
+              Test & Auto-detect Model
             </Btn>
           )}
-          {openaiTestResult && (
-            <div style={{marginTop:10,padding:"10px 14px",borderRadius:8,background:openaiTestResult.ok?`${S.teal}12`:`${S.coral}12`,border:`1px solid ${openaiTestResult.ok?S.teal+"40":S.coral+"40"}`}}>
-              <p style={{fontSize:12,color:openaiTestResult.ok?S.teal:S.coral,margin:0,fontWeight:600}}>
-                {openaiTestResult.ok?"✓ Azure OpenAI connected — image generation working":"✕ "+openaiTestResult.error}
+          {bedrockTestResult && (
+            <div style={{marginTop:10,padding:"10px 14px",borderRadius:8,background:bedrockTestResult.ok?`${S.teal}12`:`${S.coral}12`,border:`1px solid ${bedrockTestResult.ok?S.teal+"40":S.coral+"40"}`}}>
+              <p style={{fontSize:12,color:bedrockTestResult.ok?S.teal:S.coral,margin:0,fontWeight:600}}>
+                {bedrockTestResult.ok?`✓ AWS Bedrock connected — using ${bedrockTestResult.modelId}`:"✕ "+bedrockTestResult.error}
               </p>
             </div>
           )}
@@ -1000,7 +995,7 @@ function DashboardView({data,onNavigate}){
     <div>
       <div style={{marginBottom:24}}>
         <h1 style={{fontSize:24,fontWeight:800,color:S.textPrimary,margin:0}}>{co.name||"AI Social Autopilot"}</h1>
-        <p style={{color:S.textSecondary,fontSize:14,marginTop:5}}>{data.setupComplete?`${co.industry} · ${connected} accounts · GPT-4o ${data.openai?.enabled?"on":"off"} · Telegram ${tg.enabled?"active":"off"}`:"Complete setup to start generating content"}</p>
+        <p style={{color:S.textSecondary,fontSize:14,marginTop:5}}>{data.setupComplete?`${co.industry} · ${connected} accounts · Bedrock ${data.bedrock?.enabled?"on":"off"} · Telegram ${tg.enabled?"active":"off"}`:"Complete setup to start generating content"}</p>
       </div>
       {!data.setupComplete&&<div style={{background:`${S.amber}10`,border:`1px solid ${S.amber}30`,borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}><Icon path={IC.info} size={18} color={S.amber}/><span style={{color:S.amber,fontSize:13,fontWeight:600}}>Complete setup to start generating</span><Btn size="sm" variant="secondary" style={{marginLeft:"auto"}} onClick={()=>onNavigate("setup")}>Go to Setup →</Btn></div>}
       {tg.enabled&&awaitingFb>0&&<div style={{background:`${S.tg}12`,border:`1px solid ${S.tg}35`,borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}><Icon path={IC.telegram} size={20} color={S.tg}/><span style={{color:S.tg,fontSize:13,fontWeight:700}}>{awaitingFb} post{awaitingFb>1?"s":""} waiting for your Telegram rejection feedback — reply to the bot</span></div>}
@@ -1130,7 +1125,7 @@ function Sidebar({currentView,onNavigate,data}){
         );})}
       </nav>
       <div style={{padding:14,borderTop:`1px solid ${S.border}`}}>
-        {[{l:`Claude: ${data.apiKey?"active":"not set"}`,ok:!!data.apiKey},{l:`GPT-4o: ${data.openai?.enabled?"active":"off"}`,ok:!!data.openai?.enabled},{l:`${connected}/4 social connected`,ok:connected>0},{l:`Telegram: ${tg.enabled?"active":"off"}`,ok:tg.enabled}].map((s,i)=>(
+        {[{l:`Claude: ${data.apiKey?"active":"not set"}`,ok:!!data.apiKey},{l:`Bedrock: ${data.bedrock?.enabled?"active":"off"}`,ok:!!data.bedrock?.enabled},{l:`${connected}/4 social connected`,ok:connected>0},{l:`Telegram: ${tg.enabled?"active":"off"}`,ok:tg.enabled}].map((s,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
             <div style={{width:6,height:6,borderRadius:"50%",background:s.ok?S.teal:i<2?S.coral:S.textMuted}}/>
             <span style={{fontSize:10,color:S.textSecondary}}>{s.l}</span>
@@ -1144,7 +1139,7 @@ function Sidebar({currentView,onNavigate,data}){
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App(){
   const [data,setData] = useState({
-    apiKey:"", openai:DEF_OPENAI,
+    apiKey:"", bedrock:DEF_BEDROCK,
     telegram:DEF_TELEGRAM, socialAccounts:DEF_SOCIAL, company:DEF_COMPANY,
     posts:[], setupComplete:false, currentView:"dashboard"
   });
@@ -1154,7 +1149,7 @@ export default function App(){
   useEffect(()=>{
     Promise.all([api.getSettings(),api.getCompany(),api.getSocialAccounts(),api.getPosts(),api.getTelegram()])
       .then(([settings,company,socialAccounts,posts,telegram])=>{
-        setData(prev=>({...prev,apiKey:settings.apiKey,openai:settings.openai,setupComplete:settings.setupComplete,company,socialAccounts,posts,telegram}));
+        setData(prev=>({...prev,apiKey:settings.apiKey,bedrock:settings.bedrock,setupComplete:settings.setupComplete,company,socialAccounts,posts,telegram}));
         setView(settings.currentView||"dashboard");
       })
       .catch(e=>console.error("Load failed:",e));

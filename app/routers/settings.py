@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.encryption import decrypt, encrypt, is_sentinel, mask
 from app.models import AppSettings
-from app.schemas import SettingsIn, SettingsOut, OpenAIImageOut
+from app.schemas import SettingsIn, SettingsOut, BedrockOut
 
 router = APIRouter()
 
@@ -15,12 +15,11 @@ router = APIRouter()
 def _row_to_out(row: AppSettings) -> SettingsOut:
     return SettingsOut(
         api_key=mask(row.api_key_enc),
-        openai=OpenAIImageOut(
-            api_key=mask(row.openai_key_enc),
-            endpoint=row.openai_endpoint or "",
-            deployment=row.openai_deployment or "gpt-4o",
-            api_version=row.openai_api_version or "2024-12-01-preview",
-            enabled=row.openai_image_enabled,
+        bedrock=BedrockOut(
+            bearer_token=mask(row.bedrock_bearer_enc),
+            region=row.bedrock_region or "us-east-1",
+            model_id=row.bedrock_model_id or "amazon.nova-canvas-v1:0",
+            enabled=row.bedrock_enabled,
         ),
         setup_complete=row.setup_complete,
         current_view=row.current_view,
@@ -40,18 +39,16 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
     if body.api_key is not None and not is_sentinel(body.api_key):
         row.api_key_enc = encrypt(body.api_key) if body.api_key else ""
 
-    if body.openai is not None:
-        o = body.openai
-        if o.api_key is not None and not is_sentinel(o.api_key):
-            row.openai_key_enc = encrypt(o.api_key) if o.api_key else ""
-        if o.endpoint is not None:
-            row.openai_endpoint = o.endpoint
-        if o.deployment is not None:
-            row.openai_deployment = o.deployment
-        if o.api_version is not None:
-            row.openai_api_version = o.api_version
-        if o.enabled is not None:
-            row.openai_image_enabled = o.enabled
+    if body.bedrock is not None:
+        b = body.bedrock
+        if b.bearer_token is not None and not is_sentinel(b.bearer_token):
+            row.bedrock_bearer_enc = encrypt(b.bearer_token) if b.bearer_token else ""
+        if b.region is not None:
+            row.bedrock_region = b.region
+        if b.model_id is not None:
+            row.bedrock_model_id = b.model_id
+        if b.enabled is not None:
+            row.bedrock_enabled = b.enabled
 
     if body.setup_complete is not None:
         row.setup_complete = body.setup_complete
@@ -63,32 +60,35 @@ def update_settings(body: SettingsIn, db: Session = Depends(get_db)):
     return _row_to_out(row)
 
 
-class _TestOpenAIBody(BaseModel):
-    api_key: Optional[str] = None
-    endpoint: Optional[str] = None
-    deployment: Optional[str] = None
-    api_version: Optional[str] = None
+class _TestBedrockBody(BaseModel):
+    bearer_token: Optional[str] = None
+    region: Optional[str] = None
+    model_id: Optional[str] = None
 
 
-@router.post("/test-openai")
-async def test_openai(body: _TestOpenAIBody = _TestOpenAIBody(), db: Session = Depends(get_db)):
-    from app.services.openai_image import test_connection
+@router.post("/test-bedrock")
+async def test_bedrock(body: _TestBedrockBody = _TestBedrockBody(), db: Session = Depends(get_db)):
+    from app.services.bedrock import detect_and_test
     row = db.get(AppSettings, 1)
 
-    key = body.api_key or ""
-    if not key or is_sentinel(key):
-        key = decrypt(row.openai_key_enc)
+    token = body.bearer_token or ""
+    if not token or is_sentinel(token):
+        token = decrypt(row.bedrock_bearer_enc)
 
-    endpoint = body.endpoint or row.openai_endpoint or ""
-    deployment = body.deployment or row.openai_deployment or "gpt-4o"
-    api_version = body.api_version or row.openai_api_version or "2024-12-01-preview"
+    region = body.region or row.bedrock_region or "us-east-1"
+    model_id = body.model_id or None  # None → auto-detect
 
-    if not key:
-        raise HTTPException(400, "Azure OpenAI API key not configured.")
-    if not endpoint:
-        raise HTTPException(400, "Azure OpenAI endpoint URL not configured.")
+    if not token:
+        raise HTTPException(400, "AWS Bedrock bearer token not configured.")
+
     try:
-        await test_connection(key, endpoint, deployment, api_version)
+        detected = await detect_and_test(token, region, model_id or None)
     except Exception as e:
         raise HTTPException(400, str(e))
-    return {"ok": True}
+
+    # Auto-save detected model back to DB
+    row.bedrock_model_id = detected
+    row.bedrock_enabled = True
+    db.commit()
+
+    return {"ok": True, "modelId": detected}

@@ -12,11 +12,10 @@ class AppSettings(Base):
 
     id = Column(Integer, primary_key=True, default=1)
     api_key_enc = Column(Text, default="")
-    openai_key_enc = Column(Text, default="")
-    openai_endpoint = Column(Text, default="")
-    openai_deployment = Column(Text, default="gpt-4o")
-    openai_api_version = Column(Text, default="2024-12-01-preview")
-    openai_image_enabled = Column(Boolean, default=False)
+    bedrock_bearer_enc = Column(Text, default="")
+    bedrock_region = Column(String(50), default="us-east-1")
+    bedrock_model_id = Column(String(120), default="amazon.nova-canvas-v1:0")
+    bedrock_enabled = Column(Boolean, default=False)
     setup_complete = Column(Boolean, default=False)
     current_view = Column(String(50), default="dashboard")
 

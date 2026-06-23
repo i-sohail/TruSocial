@@ -59,30 +59,29 @@ async def generate_full(body: GenerateRequest, db: Session = Depends(get_db)):
         700,
     )
 
-    # Step 3 – optionally generate image via OpenAI GPT-4o
+    # Step 3 – optionally generate image via AWS Bedrock
     image_url = None
     image_prompt = None
     image_error = None
 
     if body.format == "photo":
-        if not settings.openai_image_enabled or not settings.openai_key_enc:
-            image_error = "OpenAI image generation not configured."
+        if not settings.bedrock_enabled or not settings.bedrock_bearer_enc:
+            image_error = "AWS Bedrock image generation not configured."
         else:
-            openai_key = decrypt(settings.openai_key_enc)
+            bearer = decrypt(settings.bedrock_bearer_enc)
             try:
                 image_prompt = await call_claude(
                     api_key, sys_prompt,
-                    f"GPT-4o image prompt for a social media poster. "
+                    f"Write a vivid image generation prompt for a social media poster. "
                     f"Topic: {topic_ctx}. Style: {body.image_style}. "
                     f"Company: {co.name}. Industry: {co.industry}. "
                     f"Write ONLY the image prompt (2 sentences, vivid and specific).", 250,
                 )
-                from app.services.openai_image import generate_image
+                from app.services.bedrock import generate_image
                 image_url = await generate_image(
-                    openai_key,
-                    settings.openai_endpoint or "",
-                    settings.openai_deployment or "gpt-4o",
-                    settings.openai_api_version or "2024-12-01-preview",
+                    bearer,
+                    settings.bedrock_region or "us-east-1",
+                    settings.bedrock_model_id or "amazon.nova-canvas-v1:0",
                     image_prompt,
                 )
             except Exception as e:
@@ -99,7 +98,7 @@ async def generate_full(body: GenerateRequest, db: Session = Depends(get_db)):
         image_prompt=image_prompt or "",
         image_error=image_error or "",
         image_style=body.image_style if body.format == "photo" else "",
-        image_provider="openai-gpt4o" if body.format == "photo" and image_url else "",
+        image_provider="aws-bedrock" if body.format == "photo" and image_url else "",
         status="pending",
         platforms=dict(enabled_platforms),
         created_at=datetime.now(timezone.utc),
