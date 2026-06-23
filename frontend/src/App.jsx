@@ -785,12 +785,6 @@ function SetupView({data,onSave,onToast}){
     setBedrockError("");
   };
 
-  const onBedrockTokenBlur = () => {
-    if (bedrockToken && !bedrockToken.includes("•") && !bedrockDetected) {
-      runBedrockDetect(bedrockToken);
-    }
-  };
-
   const save = async () => {
     setSaving(true);
     try {
@@ -843,25 +837,37 @@ function SetupView({data,onSave,onToast}){
             </div>
           </div>
 
-          {/* Single token field — triggers auto-detection on blur */}
-          <div style={{position:"relative",marginBottom:8}}>
+          {/* Token field + Test button */}
+          <div style={{marginBottom:8}}>
             <label style={{display:"block",color:S.textSecondary,fontSize:11,fontWeight:700,marginBottom:6,letterSpacing:"0.05em",textTransform:"uppercase"}}>
               AWS Bearer Token
             </label>
-            <div style={{position:"relative"}}>
-              <input
-                type="password"
-                value={bedrockToken}
-                onChange={e=>onBedrockTokenChange(e.target.value)}
-                onBlur={onBedrockTokenBlur}
-                placeholder="Paste AWS_BEARER_TOKEN_BEDROCK value here…"
-                style={{width:"100%",background:S.surface,border:`1px solid ${bedrockDetected?S.teal+"80":bedrockError?S.coral+"80":S.border}`,borderRadius:8,padding:"10px 44px 10px 14px",color:S.textPrimary,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}
-              />
-              <div style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)"}}>
-                {bedrockDetecting && <div style={{width:14,height:14,border:`2px solid ${S.primary}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.6s linear infinite"}}/>}
-                {!bedrockDetecting && bedrockDetected && <span style={{color:S.teal,fontSize:16}}>✓</span>}
-                {!bedrockDetecting && bedrockError && <span style={{color:S.coral,fontSize:16}}>✕</span>}
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{position:"relative",flex:1}}>
+                <input
+                  type="password"
+                  value={bedrockToken}
+                  onChange={e=>onBedrockTokenChange(e.target.value)}
+                  placeholder="Paste AWS_BEARER_TOKEN_BEDROCK value here…"
+                  style={{width:"100%",background:S.surface,border:`1px solid ${bedrockDetected?S.teal+"80":bedrockError?S.coral+"80":S.border}`,borderRadius:8,padding:"10px 44px 10px 14px",color:S.textPrimary,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}
+                />
+                <div style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)"}}>
+                  {bedrockDetecting && <div style={{width:14,height:14,border:`2px solid ${S.primary}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.6s linear infinite"}}/>}
+                  {!bedrockDetecting && bedrockDetected && <span style={{color:S.teal,fontSize:16}}>✓</span>}
+                  {!bedrockDetecting && bedrockError && <span style={{color:S.coral,fontSize:16}}>✕</span>}
+                </div>
               </div>
+              <Btn
+                variant="secondary"
+                size="sm"
+                onClick={()=>runBedrockDetect(bedrockToken)}
+                loading={bedrockDetecting}
+                disabled={!bedrockToken || bedrockToken.includes("•")}
+                icon={<Icon path={IC.refresh} size={12}/>}
+                style={{flexShrink:0,whiteSpace:"nowrap"}}
+              >
+                Test Connection
+              </Btn>
             </div>
             <p style={{margin:"5px 0 0",fontSize:11,color:S.textMuted}}>
               From your terminal: <code style={{background:S.surface3,padding:"1px 6px",borderRadius:4,color:S.textSecondary}}>echo $AWS_BEARER_TOKEN_BEDROCK</code>
@@ -909,7 +915,7 @@ function SetupView({data,onSave,onToast}){
 
           {!bedrockDetected && !bedrockDetecting && !bedrockError && (
             <p style={{fontSize:11,color:S.textMuted,marginTop:4}}>
-              Paste your token above — detection runs automatically when you leave the field
+              Paste your token above, then click <strong style={{color:S.textSecondary}}>Test Connection</strong> — region and model are detected automatically
             </p>
           )}
         </div>
